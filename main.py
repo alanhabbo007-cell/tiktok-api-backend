@@ -5,19 +5,18 @@ import yt_dlp
 
 app = FastAPI()
 
-# Creamos una carpeta temporal en tu PC para guardar los videos
 os.makedirs("descargas", exist_ok=True)
-
-# Le decimos a FastAPI que exponga esta carpeta a la red local
 app.mount("/descargas", StaticFiles(directory="descargas"), name="descargas")
 
 @app.get("/obtener_video")
 def obtener_video(url: str, request: Request):
     opciones = {
         'quiet': True,
-        # AHORA SÍ descargamos el video y lo nombramos con su ID
         'outtmpl': 'descargas/%(id)s.mp4', 
-        'format': 'mp4', # Aseguramos que sea mp4
+        # Buscamos el mejor formato mp4 disponible, si no, el mejor formato general
+        'format': 'best[ext=mp4]/best', 
+        # Evita que intente descargar cada foto por separado como si fuera un álbum
+        'noplaylist': True,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
@@ -25,17 +24,16 @@ def obtener_video(url: str, request: Request):
     
     try:
         with yt_dlp.YoutubeDL(opciones) as ydl:
-            # download=True fuerza a Python a descargar el video en la PC
             info = ydl.extract_info(url, download=True)
+            
+            # Si TikTok lo devuelve como una lista/carrusel, tomamos el elemento principal (el video combinado)
+            if 'entries' in info:
+                info = info['entries'][0]
             
             titulo = info.get('title', 'Video_TikTok')
             video_id = info.get('id')
-
-            # NUEVO: Extraemos el nombre de usuario
             nombre_usuario = info.get('uploader', 'usuario_desconocido')
             
-            # request.base_url detecta automáticamente la IP
-            # Armamos la ruta local para tu celular y forzamos https://
             url_base_segura = str(request.base_url).replace("http://", "https://")
             url_descarga_local = f"{url_base_segura}descargas/{video_id}.mp4"
             
