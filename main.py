@@ -9,47 +9,53 @@ app = FastAPI()
 os.makedirs("descargas", exist_ok=True)
 app.mount("/descargas", StaticFiles(directory="descargas"), name="descargas")
 
+# Función para extraer el link real detrás de un enlace corto de compartir
+def desenmascarar_url(url_corta: str) -> str:
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        # Hacemos una petición rápida para que TikTok nos redirija al enlace original
+        res = requests.get(url_corta, headers=headers, allow_redirects=True, timeout=10)
+        return res.url
+    except:
+        return url_corta
+
 @app.get("/obtener_video")
 def obtener_video(url: str, request: Request):
-    # Si viene con /photo/, TikTok suele mapear el mismo ID bajo /video/ para yt-dlp
-    url_limpia = url.split("?")[0]
+    # 1. Desenmascaramos el link
+    url_real = desenmascarar_url(url)
+    
+    # 2. AHORA SÍ revisamos si es foto y la engañamos cambiándola a video
+    if "/photo/" in url_real:
+        url_real = url_real.replace("/photo/", "/video/")
+        
+    # Limpiamos basura de tracking del link (?_r=1...)
+    url_limpia = url_real.split("?")[0]
     
     opciones = {
         'quiet': True,
         'outtmpl': 'descargas/%(id)s.mp4',
-        'format': 'best[ext=mp4]/best',
+        'format': 'best',
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': 'https://www.tiktok.com/'
         }
     }
-
+    
     try:
         with yt_dlp.YoutubeDL(opciones) as ydl:
-            # Primero intentamos resolver si es una URL corta redirigida
-            info = None
-            try:
-                info = ydl.extract_info(url, download=False)
-            except Exception:
-                # Si falló porque trae /photo/, probamos cambiando a /video/
-                if "/photo/" in url:
-                    url_video_alt = url.replace("/photo/", "/video/")
-                    info = ydl.extract_info(url_video_alt, download=False)
-                else:
-                    raise
-
+            # Extraemos la información con la URL ya engañada
+            info = ydl.extract_info(url_limpia, download=False)
+            
             if not info:
-                raise Exception("No se pudo extraer información del enlace.")
+                raise Exception("No se pudo extraer información.")
 
-            # Caso 1: Carrusel de fotos detectado por yt-dlp como entries o formatos de imagen
+            # Caso 1: Carrusel de fotos (devuelve una lista de 'entries')
             if 'entries' in info and info['entries']:
                 fotos_urls = []
                 for entrada in info['entries']:
                     if 'url' in entrada:
                         fotos_urls.append(entrada['url'])
-                    elif 'formats' in entrada and entrada['formats']:
-                        fotos_urls.append(entrada['formats'][-1]['url'])
-
+                
                 return {
                     "estado": "exito",
                     "tipo": "fotos",
@@ -58,15 +64,10 @@ def obtener_video(url: str, request: Request):
                     "url_descarga": None,
                     "urls_fotos": fotos_urls
                 }
-
-            # Caso 2: Galería de imágenes dentro de un solo objeto info (algunos extractores usan 'thumbnails' o 'images')
-            elif info.get('_type') == 'playlist' or 'entries' in info:
-                # Si es lista vacía o formato no estándar
-                raise Exception("Publicación de fotos sin streams directos legibles.")
-
-            # Caso 3: Video normal
+            
+            # Caso 2: Video normal o TikTok lo convirtió a MP4 automáticamente
             else:
-                info_descarga = ydl.extract_info(url, download=True)
+                info_descarga = ydl.extract_info(url_limpia, download=True)
                 video_id = info_descarga.get('id')
                 nombre_usuario = info_descarga.get('uploader', 'usuario_desconocido')
 
