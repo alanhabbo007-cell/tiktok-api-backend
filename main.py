@@ -31,18 +31,18 @@ def obtener_video(url: str, request: Request):
             titulo = info.get('title', 'Video_TikTok')
             video_id = info.get('id')
 
-	    # NUEVO: Extraemos el nombre de usuario
+            # NUEVO: Extraemos el nombre de usuario
             nombre_usuario = info.get('uploader', 'usuario_desconocido')
             
-            # request.base_url detecta automáticamente la IP de tu PC (ej. 192.168.0.X:8000)
-            # Armamos la ruta local para tu celular
+            # request.base_url detecta automáticamente la IP
+            # Armamos la ruta local para tu celular y forzamos https://
             url_base_segura = str(request.base_url).replace("http://", "https://")
-			url_descarga_local = f"{url_base_segura}descargas/{video_id}.mp4"
+            url_descarga_local = f"{url_base_segura}descargas/{video_id}.mp4"
             
             return {
                 "estado": "exito",
                 "titulo": titulo,
-		        "uploader": nombre_usuario, # <- Lo agregamos a la respuesta
+                "uploader": nombre_usuario,
                 "url_descarga": url_descarga_local
             }
     except Exception as e:
