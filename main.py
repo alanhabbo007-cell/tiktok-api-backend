@@ -13,10 +13,8 @@ def obtener_video(url: str, request: Request):
     opciones = {
         'quiet': True,
         'outtmpl': 'descargas/%(id)s.mp4', 
-        # Buscamos el mejor formato mp4 disponible, si no, el mejor formato general
         'format': 'best[ext=mp4]/best', 
-        # Evita que intente descargar cada foto por separado como si fuera un álbum
-        'noplaylist': True,
+        # Quitamos el noplaylist para que yt-dlp pueda leer el carrusel completo
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
@@ -24,24 +22,38 @@ def obtener_video(url: str, request: Request):
     
     try:
         with yt_dlp.YoutubeDL(opciones) as ydl:
-            info = ydl.extract_info(url, download=True)
+            # 1. Inspeccionamos la URL SIN descargar nada todavía
+            info = ydl.extract_info(url, download=False)
             
-            # Si TikTok lo devuelve como una lista/carrusel, tomamos el elemento principal (el video combinado)
+            # 2. Si tiene 'entries', significa que es un carrusel de fotos
             if 'entries' in info:
-                info = info['entries'][0]
+                # Extraemos solo las URLs directas de cada foto
+                fotos_urls = [entrada['url'] for entrada in info['entries'] if 'url' in entrada]
+                
+                return {
+                    "estado": "exito",
+                    "tipo": "fotos", # ¡Nueva variable para avisarle a Android!
+                    "titulo": info.get('title', 'Fotos_TikTok'),
+                    "uploader": info.get('uploader', 'usuario_desconocido'),
+                    "urls_fotos": fotos_urls # Mandamos la lista completa
+                }
             
-            titulo = info.get('title', 'Video_TikTok')
-            video_id = info.get('id')
-            nombre_usuario = info.get('uploader', 'usuario_desconocido')
-            
-            url_base_segura = str(request.base_url).replace("http://", "https://")
-            url_descarga_local = f"{url_base_segura}descargas/{video_id}.mp4"
-            
-            return {
-                "estado": "exito",
-                "titulo": titulo,
-                "uploader": nombre_usuario,
-                "url_descarga": url_descarga_local
-            }
+            # 3. Si no tiene 'entries', es un video normal. Lo descargamos en Render.
+            else:
+                info_descarga = ydl.extract_info(url, download=True)
+                video_id = info_descarga.get('id')
+                nombre_usuario = info_descarga.get('uploader', 'usuario_desconocido')
+                
+                url_base_segura = str(request.base_url).replace("http://", "https://")
+                url_descarga_local = f"{url_base_segura}descargas/{video_id}.mp4"
+                
+                return {
+                    "estado": "exito",
+                    "tipo": "video", # Le avisamos a Android que es un video
+                    "titulo": info_descarga.get('title', 'Video_TikTok'),
+                    "uploader": nombre_usuario,
+                    "url_descarga": url_descarga_local
+                }
+                
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
