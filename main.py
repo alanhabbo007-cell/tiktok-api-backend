@@ -36,12 +36,13 @@ def obtener_video(url: str, request: Request):
             
             # request.base_url detecta automáticamente la IP de tu PC (ej. 192.168.0.X:8000)
             # Armamos la ruta local para tu celular
-            url_descarga_local = f"{request.base_url}descargas/{video_id}.mp4"
+            url_base_segura = str(request.base_url).replace("http://", "https://")
+			url_descarga_local = f"{url_base_segura}descargas/{video_id}.mp4"
             
             return {
                 "estado": "exito",
                 "titulo": titulo,
-		"uploader": nombre_usuario, # <- Lo agregamos a la respuesta
+		        "uploader": nombre_usuario, # <- Lo agregamos a la respuesta
                 "url_descarga": url_descarga_local
             }
     except Exception as e:
